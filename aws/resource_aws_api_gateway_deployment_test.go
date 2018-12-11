@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/apigateway"
+	"github.com/hashicorp/terraform/helper/acctest"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
 )
@@ -27,6 +28,31 @@ func TestAccAWSAPIGatewayDeployment_basic(t *testing.T) {
 						"aws_api_gateway_deployment.test", "stage_name", "test"),
 					resource.TestCheckResourceAttr(
 						"aws_api_gateway_deployment.test", "description", "This is a test"),
+					resource.TestCheckResourceAttr(
+						"aws_api_gateway_deployment.test", "variables.a", "2"),
+					resource.TestCheckResourceAttrSet(
+						"aws_api_gateway_deployment.test", "created_date"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccAWSAPIGatewayDeployment_basicNoStage(t *testing.T) {
+	var conf apigateway.Deployment
+	name := acctest.RandString(10)
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckAWSAPIGatewayDeploymentDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: buildAPIGatewayDeploymentConfigNoStage(name),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckAWSAPIGatewayDeploymentExists("aws_api_gateway_deployment.test", &conf),
+					// resource.TestCheckResourceAttr(
+					// 	"aws_api_gateway_deployment.test", "stage_name", ""),
 					resource.TestCheckResourceAttr(
 						"aws_api_gateway_deployment.test", "variables.a", "2"),
 					resource.TestCheckResourceAttrSet(
@@ -228,6 +254,62 @@ resource "aws_api_gateway_deployment" "test" {
   }
 }
 `, url, description, description, extras)
+}
+
+func buildAPIGatewayDeploymentConfigNoStage(name string) string {
+	return fmt.Sprintf(`
+resource "aws_api_gateway_rest_api" "test" {
+  name = "test_%s"
+}
+
+resource "aws_api_gateway_resource" "test" {
+  rest_api_id = "${aws_api_gateway_rest_api.test.id}"
+  parent_id = "${aws_api_gateway_rest_api.test.root_resource_id}"
+  path_part = "test"
+}
+
+resource "aws_api_gateway_method" "test" {
+  rest_api_id = "${aws_api_gateway_rest_api.test.id}"
+  resource_id = "${aws_api_gateway_resource.test.id}"
+  http_method = "GET"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_method_response" "error" {
+  rest_api_id = "${aws_api_gateway_rest_api.test.id}"
+  resource_id = "${aws_api_gateway_resource.test.id}"
+  http_method = "${aws_api_gateway_method.test.http_method}"
+  status_code = "400"
+}
+
+resource "aws_api_gateway_integration" "test" {
+  rest_api_id = "${aws_api_gateway_rest_api.test.id}"
+  resource_id = "${aws_api_gateway_resource.test.id}"
+  http_method = "${aws_api_gateway_method.test.http_method}"
+
+  type = "HTTP"
+  uri = "https://www.google.com"
+  integration_http_method = "GET"
+}
+
+resource "aws_api_gateway_integration_response" "test" {
+  rest_api_id = "${aws_api_gateway_rest_api.test.id}"
+  resource_id = "${aws_api_gateway_resource.test.id}"
+  http_method = "${aws_api_gateway_integration.test.http_method}"
+  status_code = "${aws_api_gateway_method_response.error.status_code}"
+}
+
+resource "aws_api_gateway_deployment" "test" {
+  depends_on = ["aws_api_gateway_integration.test"]
+
+  rest_api_id = "${aws_api_gateway_rest_api.test.id}"
+  stage_name = ""
+
+  variables = {
+    "a" = "2"
+  }
+}
+`, name)
 }
 
 var testAccAWSAPIGatewayDeploymentConfig = buildAPIGatewayDeploymentConfig("This is a test", "https://www.google.de", "")

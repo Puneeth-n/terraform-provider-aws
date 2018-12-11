@@ -172,33 +172,47 @@ func resourceAwsApiGatewayDeploymentDelete(d *schema.ResourceData, meta interfac
 	conn := meta.(*AWSClient).apigateway
 	log.Printf("[DEBUG] Deleting API Gateway Deployment: %s", d.Id())
 
-	// If the stage has been updated to point at a different deployment, then
-	// the stage should not be removed then this deployment is deleted.
-	shouldDeleteStage := false
+	stageName := d.Get("stage_name").(string)
 
-	stage, err := conn.GetStage(&apigateway.GetStageInput{
-		StageName: aws.String(d.Get("stage_name").(string)),
-		RestApiId: aws.String(d.Get("rest_api_id").(string)),
-	})
+	if stageName != "" {
+		log.Printf("[DEBUG] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+		log.Printf("[DEBUG] Inside if block")
+		log.Printf("[DEBUG] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
-	if err != nil && !isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
-		return fmt.Errorf("error getting referenced stage: %s", err)
-	}
+		// If the stage has been updated to point at a different deployment, then
+		// the stage should not be removed then this deployment is deleted.
+		shouldDeleteStage := false
 
-	if stage != nil && aws.StringValue(stage.DeploymentId) == d.Id() {
-		shouldDeleteStage = true
-	}
-
-	if shouldDeleteStage {
-		if _, err := conn.DeleteStage(&apigateway.DeleteStageInput{
+		stage, err := conn.GetStage(&apigateway.GetStageInput{
 			StageName: aws.String(d.Get("stage_name").(string)),
 			RestApiId: aws.String(d.Get("rest_api_id").(string)),
-		}); err == nil {
-			return nil
+		})
+
+		if err != nil && !isAWSErr(err, apigateway.ErrCodeNotFoundException, "") {
+			return fmt.Errorf("error getting referenced stage: %s", err)
+		}
+
+		if stage != nil && aws.StringValue(stage.DeploymentId) == d.Id() {
+			shouldDeleteStage = true
+		}
+
+		if shouldDeleteStage {
+			log.Printf("[DEBUG] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+			log.Printf("[DEBUG] Inside if shouldDeleteStage")
+			log.Printf("[DEBUG] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+			if _, err := conn.DeleteStage(&apigateway.DeleteStageInput{
+				StageName: aws.String(d.Get("stage_name").(string)),
+				RestApiId: aws.String(d.Get("rest_api_id").(string)),
+			}); err == nil {
+				return nil
+			}
 		}
 	}
 
-	_, err = conn.DeleteDeployment(&apigateway.DeleteDeploymentInput{
+	log.Printf("[DEBUG] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+	log.Printf("[DEBUG] Deleting deployment")
+	log.Printf("[DEBUG] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+	_, err := conn.DeleteDeployment(&apigateway.DeleteDeploymentInput{
 		DeploymentId: aws.String(d.Id()),
 		RestApiId:    aws.String(d.Get("rest_api_id").(string)),
 	})
